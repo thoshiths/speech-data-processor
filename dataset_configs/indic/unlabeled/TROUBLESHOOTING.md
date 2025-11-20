@@ -29,34 +29,6 @@ pip install torchaudio==2.0.2
 
 ---
 
-### 1a. Warning: "SpeechBrain could not find any working torchaudio backend"
-
-**Warning:**
-```
-SpeechBrain could not find any working torchaudio backend. Audio files may fail to load.
-```
-
-**Cause:** 
-- SpeechBrain can't find audio I/O libraries
-- Missing `soundfile` or `sox` backend
-
-**Solution:**
-```bash
-# Install soundfile (recommended)
-pip install soundfile
-
-# Or install sox
-# On Ubuntu/Debian:
-sudo apt-get install libsox-dev
-pip install sox
-
-# Or use our llm requirements (already includes soundfile)
-pip install -r requirements/llm.txt
-```
-
-✅ **Note:** The warning is harmless if the model loads successfully. The code now sets the backend automatically.
-
----
 
 ### 2. Warning: "SpeechBrain could not find any working torchaudio backend"
 

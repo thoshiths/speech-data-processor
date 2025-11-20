@@ -85,6 +85,14 @@ from nemo.collections.asr.parts.utils.vad_utils import (
 from nemo.core.config import hydra_runner
 from nemo.utils import logging
 
+# Apply VAD loading patch at module level to fix checkpoint compatibility
+try:
+    from .vad_patch import apply_vad_patches
+    apply_vad_patches()
+    logging.info("Applied NeMo VAD compatibility patches")
+except Exception as e:
+    logging.warning(f"Could not apply VAD patches: {e}")
+
 
 @dataclass
 class InferenceConfig:
@@ -143,13 +151,6 @@ def main(cfg):
         cfg.output_dir = "./outputs"
     output_dir = Path(cfg.output_dir)
     output_dir.mkdir(parents=True, exist_ok=True)
-
-    # Apply VAD loading patch for checkpoint compatibility
-    try:
-        from .vad_patch import apply_vad_patches
-        apply_vad_patches()
-    except Exception as e:
-        logging.warning(f"Could not apply VAD patches: {e}")
 
     logging.info(f'Hydra config: {OmegaConf.to_yaml(cfg)}')
 
