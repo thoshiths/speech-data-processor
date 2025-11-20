@@ -116,7 +116,7 @@ langid_num_segments: 1
 
 # Derived paths
 manifest_dir: ${workspace_dir}/manifests
-raw_audio_dir: /datasets/opensource-data-collection/youtube-raw-audio/Aa/AawQ/
+raw_audio_dir: /datasets/opensource-data-collection/youtube-raw-audio/Aa/
 segmented_audio_dir: ${workspace_dir}/segmented_audio
 vad_output_dir: ${manifest_dir}/vad_output
 final_manifest: ${manifest_dir}/all_languages_final_manifest.json
