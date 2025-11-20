@@ -192,8 +192,9 @@ class BaseParallelProcessor(BaseProcessor):
     def _process_with_multiprocessing(self, metrics):
         with open(self.output_manifest_file, "wt", encoding="utf8") as fout:
             for manifest_chunk in self._chunk_manifest():
-                # Parallel processing using joblib
-                results = Parallel(n_jobs=self.max_workers, backend="multiprocessing")(
+                # Parallel processing using joblib with loky backend (CUDA-safe)
+                # loky uses spawn by default and is more robust than multiprocessing
+                results = Parallel(n_jobs=self.max_workers, backend="loky")(
                     delayed(self.process_dataset_entry)(entry) for entry in manifest_chunk
                 )
 

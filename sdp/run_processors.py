@@ -13,6 +13,7 @@
 # limitations under the License.
 
 import logging
+import multiprocessing
 import os
 import tempfile
 import uuid
@@ -114,6 +115,15 @@ def select_subset(input_list: List, select_str: str) -> List:
 
 
 def run_processors(cfg):
+    # Set multiprocessing start method to 'spawn' to support CUDA in multiprocessing
+    # This must be done before any CUDA initialization
+    try:
+        multiprocessing.set_start_method('spawn', force=True)
+        logger.info("Set multiprocessing start method to 'spawn' for CUDA compatibility")
+    except RuntimeError:
+        # Already set, which is fine
+        pass
+    
     logger.info(f"Hydra config: {OmegaConf.to_yaml(cfg)}")
 
     # Handle import manager if enabled

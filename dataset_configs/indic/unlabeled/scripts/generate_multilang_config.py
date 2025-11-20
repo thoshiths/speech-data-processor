@@ -151,6 +151,7 @@ LANGID_STAGE = '''  # ==========================================================
     min_confidence: ${langid_min_confidence}
     device: cuda
     use_dask: False  # Disable Dask (custom batch processing avoids Dask overhead)
+    max_workers: 1  # Serial processing (custom batch method handles batching)
 
   - _target_: sdp.processors.WhisperLangId
     output_manifest_file: ${manifest_dir}/08_with_whisper_langid.json
@@ -161,6 +162,7 @@ LANGID_STAGE = '''  # ==========================================================
     min_confidence: ${langid_min_confidence}
     device: cuda
     use_dask: False  # Disable Dask (custom batch processing avoids Dask overhead)
+    max_workers: 1  # Serial processing (custom batch method handles batching)
 
   - _target_: sdp.processors.CrossValidateLangId
     output_manifest_file: ${manifest_dir}/09_with_consensus_lang.json
