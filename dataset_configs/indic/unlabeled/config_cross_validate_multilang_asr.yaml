@@ -68,7 +68,7 @@ workspace_dir: ???
 target_languages: ["hi", "en"]  # All 12 languages
 
 # ASR Model paths (only required for languages in target_languages list)
-model_hi: ???  # Hindi
+model_hi: /shared/models/vachana_hybrid_xxl_hi_in.nemo  # Hindi
 model_te: ???  # Telugu  
 model_ta: ???  # Tamil
 model_bn: ???  # Bengali
@@ -79,7 +79,7 @@ model_gu: ???  # Gujarati
 model_pa: ???  # Punjabi
 model_or: ???  # Odia
 model_as: ???  # Assamese
-model_en: ???  # English
+model_en: /shared/models/vachana_tdt_xl_en_in.nemo  # English
 
 # Optional parameters
 audio_extension: wav
@@ -116,7 +116,7 @@ langid_num_segments: 1
 
 # Derived paths
 manifest_dir: ${workspace_dir}/manifests
-raw_audio_dir: ${workspace_dir}/raw_audio  # Override this to point to your existing audio directory
+raw_audio_dir: /datasets/opensource-data-collection/youtube-raw-audio/Ab/
 segmented_audio_dir: ${workspace_dir}/segmented_audio
 vad_output_dir: ${manifest_dir}/vad_output
 final_manifest: ${manifest_dir}/all_languages_final_manifest.json
