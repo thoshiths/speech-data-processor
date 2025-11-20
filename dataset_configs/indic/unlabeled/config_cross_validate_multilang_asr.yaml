@@ -1,0 +1,556 @@
+documentation: |
+  Cross-Validated Multi-Language ASR Router
+  ##########################################
+  
+  This configuration automatically routes segments to appropriate ASR models
+  based on cross-validated language detection.
+  
+  **INTELLIGENT ROUTING** - Each segment gets transcribed by its language-specific ASR!
+  
+  **Process:**
+  1. VAD segments the long audio
+  2. Cross-validate language detection (3 models) per segment
+  3. Route each segment to its detected language's ASR model
+  4. Combine all transcriptions
+  
+  **Use when:**
+  - Want to transcribe ALL languages (not just one)
+  - Have ASR models for multiple languages
+  - Maximum accuracy required per language
+  - Mixed multilingual content
+  
+  **Example Usage:**
+  
+  .. code-block:: bash
+  
+      # Process only 3 languages (Hindi, Telugu, English)
+      python main.py \\
+        --config-path="dataset_configs/indic/unlabeled" \\
+        --config-name="config_cross_validate_multilang_asr.yaml" \\
+        processors_to_run="0:" \\
+        workspace_dir="/data/mixed_audio" \\
+        target_languages='["hi","te","en"]' \\
+        model_hi="/models/hindi.nemo" \\
+        model_te="/models/telugu.nemo" \\
+        model_en="/models/english.nemo"
+      
+      # Process all 12 languages
+      python main.py \\
+        --config-path="dataset_configs/indic/unlabeled" \\
+        --config-name="config_cross_validate_multilang_asr.yaml" \\
+        processors_to_run="0:" \\
+        workspace_dir="/data/mixed_audio" \\
+        target_languages='["hi","te","ta","bn","ml","kn","mr","gu","pa","or","as","en"]' \\
+        model_hi="/models/hindi.nemo" \\
+        model_te="/models/telugu.nemo" \\
+        model_ta="/models/tamil.nemo" \\
+        model_bn="/models/bengali.nemo" \\
+        model_ml="/models/malayalam.nemo" \\
+        model_kn="/models/kannada.nemo" \\
+        model_mr="/models/marathi.nemo" \\
+        model_gu="/models/gujarati.nemo" \\
+        model_pa="/models/punjabi.nemo" \\
+        model_or="/models/odia.nemo" \\
+        model_as="/models/assamese.nemo" \\
+        model_en="/models/english.nemo"
+  
+  **Output:**
+  All segments transcribed by their appropriate language-specific ASR models!
+
+processors_to_run: "0:"
+
+# Required parameters
+workspace_dir: ???
+
+# Languages to process (specify which languages you want to work on)
+# Options: hi, te, ta, bn, ml, kn, mr, gu, pa, or, as, en
+# You only need to provide ASR models for languages in this list
+target_languages: ["hi", "en"]  # All 12 languages
+
+# ASR Model paths (only required for languages in target_languages list)
+model_hi: ???  # Hindi
+model_te: ???  # Telugu  
+model_ta: ???  # Tamil
+model_bn: ???  # Bengali
+model_ml: ???  # Malayalam
+model_kn: ???  # Kannada
+model_mr: ???  # Marathi
+model_gu: ???  # Gujarati
+model_pa: ???  # Punjabi
+model_or: ???  # Odia
+model_as: ???  # Assamese
+model_en: ???  # English
+
+# Optional parameters
+audio_extension: wav
+min_segment_duration: 1.0
+max_segment_duration: 30.0
+asr_batch_size: 32
+
+# Punctuation Restoration (set enable_punctuation to false to disable)
+enable_punctuation: true
+punctuation_method: "llm"  # Options: "llm" (LLM-based), "nemo" (NeMo model), "none"
+punctuation_model: "google/gemma-3-27b-it"  # For LLM: any HF model; For NeMo: "punctuation_en_bert"
+punctuation_prompt: "Add proper punctuation and capitalization to this text. Return only the punctuated text:\n\n{text}"
+
+# TTS Quality Filtering (set to false to disable quality checks)
+enable_quality_metrics: true
+min_pesq: 3.0              # Perceptual quality (1-5 scale, higher=better)
+min_stoi: 0.75             # Intelligibility (0-1 scale, higher=better)
+min_sisdr: 12.0            # Signal-to-distortion ratio (dB, higher=better)
+min_snr: 15.0              # Signal-to-noise ratio (dB, higher=better)
+min_bandwidth: 4000        # Minimum bandwidth in Hz (4000=narrowband, 8000=wideband)
+
+# VAD parameters
+vad_model: "vad_multilingual_frame_marblenet"
+vad_onset: 0.3
+vad_offset: 0.3
+vad_min_duration: 0.2
+
+# Cross-validation parameters
+consensus_method: "weighted"
+require_agreement: 2
+langid_min_confidence: 0.6
+langid_segment_duration: 15
+langid_num_segments: 1
+
+# Derived paths
+manifest_dir: ${workspace_dir}/manifests
+raw_audio_dir: ${workspace_dir}/raw_audio
+segmented_audio_dir: ${workspace_dir}/segmented_audio
+vad_output_dir: ${manifest_dir}/vad_output
+final_manifest: ${manifest_dir}/all_languages_final_manifest.json
+
+processors:
+  # ============================================================
+  # STAGE 1: SEGMENTATION (Same as before)
+  # ============================================================
+  
+  - _target_: sdp.processors.CreateInitialManifestByExt
+    raw_data_dir: ${raw_audio_dir}
+    extension: ${audio_extension}
+    output_file_key: audio_filepath
+    output_manifest_file: ${manifest_dir}/00_initial_manifest.json
+
+  - _target_: sdp.processors.GetAudioDuration
+    audio_filepath_key: audio_filepath
+    duration_key: duration
+    output_manifest_file: ${manifest_dir}/01_with_duration.json
+
+  - _target_: sdp.processors.Subprocess
+    cmd: 'rm -rf ${vad_output_dir}/*'
+
+  - _target_: sdp.processors.Subprocess
+    input_manifest_file: ${manifest_dir}/01_with_duration.json
+    output_manifest_file: ${vad_output_dir}
+    input_manifest_arg: "manifest_filepath"
+    output_manifest_arg: "output_dir"
+    cmd: 'python sdp/processors/inference/asr/nemo/utils/speech_to_text_with_vad.py audio_type=${audio_extension} vad_model=${vad_model} vad_config=sdp/processors/inference/asr/nemo/utils/frame_vad_infer_postprocess.yaml'
+
+  - _target_: sdp.processors.RenameFields
+    input_manifest_file: ${vad_output_dir}/temp_manifest_vad_rttm-onset${vad_onset}-offset${vad_offset}-pad_onset0.2-pad_offset0.2-min_duration_on${vad_min_duration}-min_duration_off${vad_min_duration}-filter_speech_firstTrue.json
+    output_manifest_file: ${manifest_dir}/02_vad_output.json
+    rename_fields: {"audio_filepath": "source_filepath"}
+
+  - _target_: sdp.processors.GetRttmSegments
+    output_manifest_file: ${manifest_dir}/03_with_segments.json
+    rttm_key: rttm_file
+    output_file_key: audio_segments
+    duration_key: duration
+    duration_threshold: ${max_segment_duration}
+
+  - _target_: sdp.processors.SplitAudioFile
+    output_manifest_file: ${manifest_dir}/04_segmented_audio.json
+    splited_audio_dir: ${segmented_audio_dir}
+    segments_key: audio_segments
+    duration_key: duration
+    input_file_key: source_filepath
+    output_file_key: audio_filepath
+
+  - _target_: sdp.processors.DropHighLowDuration
+    output_manifest_file: ${manifest_dir}/05_filtered_segments.json
+    high_duration_threshold: ${max_segment_duration}
+    low_duration_threshold: ${min_segment_duration}
+
+  # ============================================================
+  # STAGE 2: CROSS-VALIDATED LANGUAGE IDENTIFICATION
+  # ============================================================
+
+  - _target_: sdp.processors.AudioLid
+    output_manifest_file: ${manifest_dir}/06_with_nemo_langid.json
+    input_audio_key: audio_filepath
+    output_lang_key: nemo_lang
+    device: cuda
+    pretrained_model: "langid_ambernet"
+    segment_duration: ${langid_segment_duration}
+    num_segments: ${langid_num_segments}
+
+  - _target_: sdp.processors.SpeechBrainLangId
+    output_manifest_file: ${manifest_dir}/07_with_speechbrain_langid.json
+    input_audio_key: audio_filepath
+    output_lang_key: speechbrain_lang
+    output_confidence_key: speechbrain_conf
+    model_source: "speechbrain/lang-id-voxlingua107-ecapa"
+    min_confidence: ${langid_min_confidence}
+    device: cuda
+
+  - _target_: sdp.processors.WhisperLangId
+    output_manifest_file: ${manifest_dir}/08_with_whisper_langid.json
+    input_audio_key: audio_filepath
+    output_lang_key: whisper_lang
+    output_confidence_key: whisper_conf
+    model_size: "large-v3"
+    min_confidence: ${langid_min_confidence}
+    device: cuda
+
+  - _target_: sdp.processors.CrossValidateLangId
+    output_manifest_file: ${manifest_dir}/09_with_consensus_lang.json
+    lang_keys: ["nemo_lang", "speechbrain_lang", "whisper_lang"]
+    confidence_keys: ["nemo_conf", "speechbrain_conf", "whisper_conf"]
+    output_lang_key: detected_lang
+    output_confidence_key: lang_confidence
+    method: ${consensus_method}
+    require_agreement: ${require_agreement}
+
+  # ============================================================
+  # STAGE 3: FILTER BY TARGET LANGUAGES
+  # Only keep segments in languages we want to process
+  # ============================================================
+  
+  - _target_: sdp.processors.PreserveByValue
+    output_manifest_file: ${manifest_dir}/09a_target_languages_only.json
+    input_value_key: detected_lang
+    target_value: ${target_languages}
+
+  # ============================================================
+  # STAGE 4: LANGUAGE-SPECIFIC ASR ROUTING
+  # Process each language with its dedicated ASR model
+  # Only languages in target_languages will be processed
+  # ============================================================
+  
+  # Process Hindi segments
+  - _target_: sdp.processors.PreserveByValue
+    input_manifest_file: ${manifest_dir}/09a_target_languages_only.json
+    output_manifest_file: ${manifest_dir}/10_hindi_segments.json
+    input_value_key: detected_lang
+    target_value: "hi"
+
+  - _target_: sdp.processors.ASRInference
+    input_manifest_file: ${manifest_dir}/10_hindi_segments.json
+    output_manifest_file: ${manifest_dir}/11_hindi_transcribed.json
+    pretrained_model: ${model_hi}
+    batch_size: ${asr_batch_size}
+
+  # Process Telugu segments
+  - _target_: sdp.processors.PreserveByValue
+    input_manifest_file: ${manifest_dir}/09a_target_languages_only.json
+    output_manifest_file: ${manifest_dir}/10_telugu_segments.json
+    input_value_key: detected_lang
+    target_value: "te"
+
+  - _target_: sdp.processors.ASRInference
+    input_manifest_file: ${manifest_dir}/10_telugu_segments.json
+    output_manifest_file: ${manifest_dir}/11_telugu_transcribed.json
+    pretrained_model: ${model_te}
+    batch_size: ${asr_batch_size}
+
+  # Process Tamil segments
+  - _target_: sdp.processors.PreserveByValue
+    input_manifest_file: ${manifest_dir}/09a_target_languages_only.json
+    output_manifest_file: ${manifest_dir}/10_tamil_segments.json
+    input_value_key: detected_lang
+    target_value: "ta"
+
+  - _target_: sdp.processors.ASRInference
+    input_manifest_file: ${manifest_dir}/10_tamil_segments.json
+    output_manifest_file: ${manifest_dir}/11_tamil_transcribed.json
+    pretrained_model: ${model_ta}
+    batch_size: ${asr_batch_size}
+
+  # Process English segments
+  - _target_: sdp.processors.PreserveByValue
+    input_manifest_file: ${manifest_dir}/09a_target_languages_only.json
+    output_manifest_file: ${manifest_dir}/10_english_segments.json
+    input_value_key: detected_lang
+    target_value: "en"
+
+  - _target_: sdp.processors.ASRInference
+    input_manifest_file: ${manifest_dir}/10_english_segments.json
+    output_manifest_file: ${manifest_dir}/11_english_transcribed.json
+    pretrained_model: ${model_en}
+    batch_size: ${asr_batch_size}
+
+  # Process Bengali segments
+  - _target_: sdp.processors.PreserveByValue
+    input_manifest_file: ${manifest_dir}/09a_target_languages_only.json
+    output_manifest_file: ${manifest_dir}/10_bengali_segments.json
+    input_value_key: detected_lang
+    target_value: "bn"
+
+  - _target_: sdp.processors.ASRInference
+    input_manifest_file: ${manifest_dir}/10_bengali_segments.json
+    output_manifest_file: ${manifest_dir}/11_bengali_transcribed.json
+    pretrained_model: ${model_bn}
+    batch_size: ${asr_batch_size}
+
+  # Process Malayalam segments
+  - _target_: sdp.processors.PreserveByValue
+    input_manifest_file: ${manifest_dir}/09a_target_languages_only.json
+    output_manifest_file: ${manifest_dir}/10_malayalam_segments.json
+    input_value_key: detected_lang
+    target_value: "ml"
+
+  - _target_: sdp.processors.ASRInference
+    input_manifest_file: ${manifest_dir}/10_malayalam_segments.json
+    output_manifest_file: ${manifest_dir}/11_malayalam_transcribed.json
+    pretrained_model: ${model_ml}
+    batch_size: ${asr_batch_size}
+
+  # Process Kannada segments
+  - _target_: sdp.processors.PreserveByValue
+    input_manifest_file: ${manifest_dir}/09a_target_languages_only.json
+    output_manifest_file: ${manifest_dir}/10_kannada_segments.json
+    input_value_key: detected_lang
+    target_value: "kn"
+
+  - _target_: sdp.processors.ASRInference
+    input_manifest_file: ${manifest_dir}/10_kannada_segments.json
+    output_manifest_file: ${manifest_dir}/11_kannada_transcribed.json
+    pretrained_model: ${model_kn}
+    batch_size: ${asr_batch_size}
+
+  # Process Marathi segments
+  - _target_: sdp.processors.PreserveByValue
+    input_manifest_file: ${manifest_dir}/09a_target_languages_only.json
+    output_manifest_file: ${manifest_dir}/10_marathi_segments.json
+    input_value_key: detected_lang
+    target_value: "mr"
+
+  - _target_: sdp.processors.ASRInference
+    input_manifest_file: ${manifest_dir}/10_marathi_segments.json
+    output_manifest_file: ${manifest_dir}/11_marathi_transcribed.json
+    pretrained_model: ${model_mr}
+    batch_size: ${asr_batch_size}
+
+  # Process Gujarati segments
+  - _target_: sdp.processors.PreserveByValue
+    input_manifest_file: ${manifest_dir}/09a_target_languages_only.json
+    output_manifest_file: ${manifest_dir}/10_gujarati_segments.json
+    input_value_key: detected_lang
+    target_value: "gu"
+
+  - _target_: sdp.processors.ASRInference
+    input_manifest_file: ${manifest_dir}/10_gujarati_segments.json
+    output_manifest_file: ${manifest_dir}/11_gujarati_transcribed.json
+    pretrained_model: ${model_gu}
+    batch_size: ${asr_batch_size}
+
+  # Process Punjabi segments
+  - _target_: sdp.processors.PreserveByValue
+    input_manifest_file: ${manifest_dir}/09a_target_languages_only.json
+    output_manifest_file: ${manifest_dir}/10_punjabi_segments.json
+    input_value_key: detected_lang
+    target_value: "pa"
+
+  - _target_: sdp.processors.ASRInference
+    input_manifest_file: ${manifest_dir}/10_punjabi_segments.json
+    output_manifest_file: ${manifest_dir}/11_punjabi_transcribed.json
+    pretrained_model: ${model_pa}
+    batch_size: ${asr_batch_size}
+
+  # Process Odia segments
+  - _target_: sdp.processors.PreserveByValue
+    input_manifest_file: ${manifest_dir}/09a_target_languages_only.json
+    output_manifest_file: ${manifest_dir}/10_odia_segments.json
+    input_value_key: detected_lang
+    target_value: "or"
+
+  - _target_: sdp.processors.ASRInference
+    input_manifest_file: ${manifest_dir}/10_odia_segments.json
+    output_manifest_file: ${manifest_dir}/11_odia_transcribed.json
+    pretrained_model: ${model_or}
+    batch_size: ${asr_batch_size}
+
+  # Process Assamese segments
+  - _target_: sdp.processors.PreserveByValue
+    input_manifest_file: ${manifest_dir}/09a_target_languages_only.json
+    output_manifest_file: ${manifest_dir}/10_assamese_segments.json
+    input_value_key: detected_lang
+    target_value: "as"
+
+  - _target_: sdp.processors.ASRInference
+    input_manifest_file: ${manifest_dir}/10_assamese_segments.json
+    output_manifest_file: ${manifest_dir}/11_assamese_transcribed.json
+    pretrained_model: ${model_as}
+    batch_size: ${asr_batch_size}
+
+  # ============================================================
+  # STAGE 5: COMBINE ALL LANGUAGES
+  # NOTE: Only manifests for languages in target_languages will exist
+  # Empty manifests are automatically skipped by CreateCombinedManifests
+  # ============================================================
+
+  - _target_: sdp.processors.CreateCombinedManifests
+    output_manifest_file: ${manifest_dir}/12_all_transcribed.json
+    manifest_list:
+      - ${manifest_dir}/11_hindi_transcribed.json
+      - ${manifest_dir}/11_telugu_transcribed.json
+      - ${manifest_dir}/11_tamil_transcribed.json
+      - ${manifest_dir}/11_bengali_transcribed.json
+      - ${manifest_dir}/11_malayalam_transcribed.json
+      - ${manifest_dir}/11_kannada_transcribed.json
+      - ${manifest_dir}/11_marathi_transcribed.json
+      - ${manifest_dir}/11_gujarati_transcribed.json
+      - ${manifest_dir}/11_punjabi_transcribed.json
+      - ${manifest_dir}/11_odia_transcribed.json
+      - ${manifest_dir}/11_assamese_transcribed.json
+      - ${manifest_dir}/11_english_transcribed.json
+
+  # ============================================================
+  # STAGE 5: POST-PROCESSING
+  # ============================================================
+
+  - _target_: sdp.processors.DuplicateFields
+    output_manifest_file: ${manifest_dir}/13_with_text.json
+    duplicate_fields: {"pred_text": "text"}
+
+  - _target_: sdp.processors.SubRegex
+    output_manifest_file: ${manifest_dir}/14_cleaned_text.json
+    regex_params_list:
+      - {"pattern": "\\s+", "repl": " "}
+      - {"pattern": "^\\s+|\\s+$", "repl": ""}
+
+  - _target_: sdp.processors.DropIfRegexMatch
+    output_manifest_file: ${manifest_dir}/15_filtered_empty.json
+    regex_patterns: 
+      - "^\\s*$"
+      - "^.{1,2}$"
+
+  - _target_: sdp.processors.CountNumWords
+    output_manifest_file: ${manifest_dir}/16_with_word_count.json
+    text_key: text
+    output_key: num_words
+
+  - _target_: sdp.processors.DropHighLowWordrate
+    output_manifest_file: ${manifest_dir}/17_filtered_wordrate.json
+    high_wordrate_threshold: 6.0
+    low_wordrate_threshold: 0.3
+
+  # ============================================================
+  # STAGE 7: AUDIO QUALITY ASSESSMENT FOR TTS
+  # ============================================================
+
+  # Step 19: Calculate SQUIM Quality Metrics (PESQ, STOI, SI-SDR)
+  - _target_: sdp.processors.SquimQualityMetrics
+    output_manifest_file: ${manifest_dir}/18_with_squim_metrics.json
+    audio_filepath_key: audio_filepath
+    output_pesq_key: pesq
+    output_stoi_key: stoi
+    output_sisdr_key: sisdr
+    device: cuda
+    batch_size: 32
+
+  # Step 20: Estimate Bandwidth
+  - _target_: sdp.processors.BandwidthEstimation
+    output_manifest_file: ${manifest_dir}/19_with_bandwidth.json
+    audio_filepath_key: audio_filepath
+    output_bandwidth_key: bandwidth_hz
+
+  # Step 21: Estimate SNR (Signal-to-Noise Ratio)
+  - _target_: sdp.processors.SNREstimation
+    output_manifest_file: ${manifest_dir}/20_with_snr.json
+    audio_filepath_key: audio_filepath
+    output_snr_key: snr_db
+
+  # Step 22: Filter by PESQ (Perceptual Quality)
+  - _target_: sdp.processors.DropOnAttribute
+    output_manifest_file: ${manifest_dir}/21_filtered_pesq.json
+    attribute_key: pesq
+    operator: "<"
+    value: ${min_pesq}
+
+  # Step 23: Filter by STOI (Intelligibility)
+  - _target_: sdp.processors.DropOnAttribute
+    output_manifest_file: ${manifest_dir}/22_filtered_stoi.json
+    attribute_key: stoi
+    operator: "<"
+    value: ${min_stoi}
+
+  # Step 24: Filter by SI-SDR (Signal-to-Distortion)
+  - _target_: sdp.processors.DropOnAttribute
+    output_manifest_file: ${manifest_dir}/23_filtered_sisdr.json
+    attribute_key: sisdr
+    operator: "<"
+    value: ${min_sisdr}
+
+  # Step 25: Filter by SNR (Signal-to-Noise)
+  - _target_: sdp.processors.DropOnAttribute
+    output_manifest_file: ${manifest_dir}/24_filtered_snr.json
+    attribute_key: snr_db
+    operator: "<"
+    value: ${min_snr}
+
+  # Step 26: Filter by Bandwidth
+  - _target_: sdp.processors.DropOnAttribute
+    output_manifest_file: ${manifest_dir}/25_filtered_bandwidth.json
+    attribute_key: bandwidth_hz
+    operator: "<"
+    value: ${min_bandwidth}
+
+  # ============================================================
+  # STAGE 8: PUNCTUATION RESTORATION (Optional)
+  # Creates duplicates: one with pnc=no, one with pnc=yes
+  # ============================================================
+
+  # Step 27: Add Punctuation using LLM or NeMo
+  # This creates 2x entries: original (pnc=no) + punctuated (pnc=yes)
+  # Note: Gemma-2-27B requires tensor_parallel_size=2 (uses 2 GPUs)
+  - _target_: sdp.processors.LLMPunctuationRestoration
+    output_manifest_file: ${manifest_dir}/26_with_punctuation.json
+    input_text_key: text
+    output_text_key: text
+    pnc_flag_key: pnc
+    model_name: ${punctuation_model}
+    prompt_template: ${punctuation_prompt}
+    tensor_parallel_size: 2  # Use 2 GPUs for Gemma-2-27B (reduce to 1 for smaller models)
+    max_tokens: 512
+    temperature: 0.0
+    keep_original: true
+
+  # Alternative: Use NeMo for English (faster, less flexible)
+  # - _target_: sdp.processors.NeMoPunctuationRestoration
+  #   output_manifest_file: ${manifest_dir}/26_with_punctuation.json
+  #   input_text_key: text
+  #   output_text_key: text
+  #   model_name: "punctuation_en_bert"
+  #   batch_size: 64
+  #   keep_original: true
+
+  # Step 28: Keep Essential Fields (including punctuation flag)
+  - _target_: sdp.processors.KeepOnlySpecifiedFields
+    output_manifest_file: ${final_manifest}
+    fields_to_keep:
+      - "audio_filepath"
+      - "text"
+      - "duration"
+      - "pred_text"
+      - "detected_lang"
+      - "lang_confidence"
+      - "num_words"
+      - "source_filepath"
+      - "nemo_lang"
+      - "speechbrain_lang"
+      - "speechbrain_conf"
+      - "whisper_lang"
+      - "whisper_conf"
+      - "lang_agreement"
+      - "lang_total_models"
+      # Quality metrics for TTS
+      - "pesq"
+      - "stoi"
+      - "sisdr"
+      - "snr_db"
+      - "bandwidth_hz"
+      # Punctuation flag
+      - "pnc"
+

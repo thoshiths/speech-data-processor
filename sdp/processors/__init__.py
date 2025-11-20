@@ -150,9 +150,24 @@ from sdp.processors.inference.asr.utils.whisper_hallucinations import DetectWhis
 from sdp.processors.inference.asr.utils.rttm import GetRttmSegments, SplitAudioFile
 from sdp.processors.inference.nlp.nemo.pc_inference import PCInference
 from sdp.processors.inference.nlp.fasttext.fasttext import FastTextLangIdClassifier
+from sdp.processors.inference.nlp.speechbrain.langid import (
+    SpeechBrainLangId,
+    WhisperLangId,
+    CrossValidateLangId,
+)
 from sdp.processors.inference.llm.vllm.vllm import vLLMInference
 from sdp.processors.inference.llm.utils.qwen_cleaning import CleanQwenGeneration
 from sdp.processors.inference.quality_estimation.pymarian import CometoidWMTQualityEstimation
+from sdp.processors.inference.quality.audio_quality import (
+    BandwidthEstimation,
+    SNREstimation,
+    SquimQualityMetrics,
+)
+from sdp.processors.inference.nlp.punctuation_restoration import (
+    LLMPunctuationRestoration,
+    NeMoPunctuationRestoration,
+    DuplicateWithPunctuationFlag,
+)
 
 from sdp.processors.manage_files.convert_audio import (
     FfmpegConvert,
