@@ -144,6 +144,13 @@ def main(cfg):
     output_dir = Path(cfg.output_dir)
     output_dir.mkdir(parents=True, exist_ok=True)
 
+    # Apply VAD loading patch for checkpoint compatibility
+    try:
+        from .vad_patch import apply_vad_patches
+        apply_vad_patches()
+    except Exception as e:
+        logging.warning(f"Could not apply VAD patches: {e}")
+
     logging.info(f'Hydra config: {OmegaConf.to_yaml(cfg)}')
 
     # setup profiling, note that profiling will significantly increast the total runtime

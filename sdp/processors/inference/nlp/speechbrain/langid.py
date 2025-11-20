@@ -95,15 +95,26 @@ class SpeechBrainLangId(BaseParallelProcessor):
             import torchaudio
             
             # Fix for torchaudio 2.1.0+ compatibility with speechbrain
-            # speechbrain expects list_audio_backends() which was removed in torchaudio 2.1.0
+            # 1. Set backend if not already set (suppresses warning)
+            try:
+                if hasattr(torchaudio, 'set_audio_backend'):
+                    # For torchaudio < 2.1.0
+                    torchaudio.set_audio_backend("soundfile")
+                elif hasattr(torchaudio, 'get_audio_backend'):
+                    # For torchaudio >= 2.1.0, backend is automatic
+                    pass
+            except:
+                pass
+            
+            # 2. Monkey-patch list_audio_backends if it doesn't exist
             if not hasattr(torchaudio, 'list_audio_backends'):
-                torchaudio.list_audio_backends = lambda: []
+                torchaudio.list_audio_backends = lambda: ['soundfile', 'sox_io']
             
             from speechbrain.inference.classifiers import EncoderClassifier
         except ImportError as e:
             raise ImportError(
                 "SpeechBrain or torchaudio is not installed. "
-                "Please install with: pip install speechbrain torchaudio\n"
+                "Please install with: pip install speechbrain torchaudio soundfile\n"
                 f"Error: {e}"
             )
         

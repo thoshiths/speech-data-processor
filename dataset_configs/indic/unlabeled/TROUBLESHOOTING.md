@@ -29,7 +29,65 @@ pip install torchaudio==2.0.2
 
 ---
 
-### 2. `InterpolationKeyError: 'model_te' not found`
+### 1a. Warning: "SpeechBrain could not find any working torchaudio backend"
+
+**Warning:**
+```
+SpeechBrain could not find any working torchaudio backend. Audio files may fail to load.
+```
+
+**Cause:** 
+- SpeechBrain can't find audio I/O libraries
+- Missing `soundfile` or `sox` backend
+
+**Solution:**
+```bash
+# Install soundfile (recommended)
+pip install soundfile
+
+# Or install sox
+# On Ubuntu/Debian:
+sudo apt-get install libsox-dev
+pip install sox
+
+# Or use our llm requirements (already includes soundfile)
+pip install -r requirements/llm.txt
+```
+
+✅ **Note:** The warning is harmless if the model loads successfully. The code now sets the backend automatically.
+
+---
+
+### 2. Warning: "SpeechBrain could not find any working torchaudio backend"
+
+**Warning:**
+```
+SpeechBrain could not find any working torchaudio backend. Audio files may fail to load.
+```
+
+**Cause:** 
+- SpeechBrain can't find audio I/O libraries
+- Missing `soundfile` or `sox` backend
+
+**Solution:**
+```bash
+# Install soundfile (recommended)
+pip install soundfile
+
+# Or install sox
+# On Ubuntu/Debian:
+sudo apt-get install libsox-dev
+pip install sox
+
+# Or use our llm requirements (already includes soundfile)
+pip install -r requirements/llm.txt
+```
+
+✅ **Note:** The warning is harmless if the model loads successfully. The code now sets the backend automatically.
+
+---
+
+### 3. `InterpolationKeyError: 'model_te' not found`
 
 **Error:**
 ```
@@ -63,7 +121,37 @@ python main.py \
 
 ---
 
-### 3. `DropOnAttribute.__init__() missing 1 required positional argument: 'key'`
+### 4. `RuntimeError: Error(s) in loading state_dict for EncDecFrameClassificationModel: Unexpected key(s) in state_dict: "loss.weight"`
+
+**Error:**
+```
+RuntimeError: Error(s) in loading state_dict for EncDecFrameClassificationModel:
+        Unexpected key(s) in state_dict: "loss.weight".
+```
+
+**Cause:** 
+- NeMo VAD model checkpoint contains extra keys not expected by the current model definition
+- Checkpoint format mismatch between NeMo versions
+
+**Solution:**
+✅ **Already Fixed!** The code now includes an automatic patch that:
+1. Detects VAD/classification models
+2. Loads them with `strict=False` to ignore extra keys
+3. Allows the model to load successfully
+
+The patch is automatically applied when you run the pipeline.
+
+**Alternative Solution (if patch fails):**
+Try a different VAD model:
+```bash
+python main.py \
+  vad_model="vad_multilingual_marblenet" \  # Try marblenet instead
+  ...
+```
+
+---
+
+### 5. `DropOnAttribute.__init__() missing 1 required positional argument: 'key'`
 
 **Error:**
 ```

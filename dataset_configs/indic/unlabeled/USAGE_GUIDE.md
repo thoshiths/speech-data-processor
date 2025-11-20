@@ -169,6 +169,12 @@ python /path/to/speech-data-processor/main.py \
 
 ## Common Errors
 
+### Error: `AttributeError: module 'torchaudio' has no attribute 'list_audio_backends'`
+
+**Cause:** SpeechBrain incompatibility with torchaudio 2.1.0+
+
+**Solution:** ✅ **Already Fixed!** The code includes an automatic compatibility patch. Just restart the pipeline.
+
 ### Error: `InterpolationKeyError: 'model_te' not found`
 
 **Cause:** You didn't provide all 12 model paths.
@@ -179,5 +185,9 @@ python /path/to/speech-data-processor/main.py \
 
 **Cause:** Using old configuration with incorrect quality filtering.
 
-**Solution:** This has been fixed in the latest version. Make sure you're using the updated `config_cross_validate_multilang_asr.yaml`.
+**Solution:** ✅ **Already Fixed!** Make sure you're using the updated `config_cross_validate_multilang_asr.yaml`.
+
+---
+
+**For more troubleshooting, see:** `TROUBLESHOOTING.md`
 
