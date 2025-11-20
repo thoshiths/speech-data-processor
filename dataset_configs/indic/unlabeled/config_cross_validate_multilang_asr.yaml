@@ -194,6 +194,7 @@ processors:
     min_confidence: ${langid_min_confidence}
     device: cuda
     batch_size: 32  # Batch processing for better GPU utilization
+    num_workers: 0  # Disable Dask (batch processing already efficient)
 
   - _target_: sdp.processors.WhisperLangId
     output_manifest_file: ${manifest_dir}/08_with_whisper_langid.json
@@ -204,6 +205,7 @@ processors:
     min_confidence: ${langid_min_confidence}
     device: cuda
     batch_size: 16  # Batch processing for better GPU utilization
+    num_workers: 0  # Disable Dask (batch processing already efficient)
 
   - _target_: sdp.processors.CrossValidateLangId
     output_manifest_file: ${manifest_dir}/09_with_consensus_lang.json
