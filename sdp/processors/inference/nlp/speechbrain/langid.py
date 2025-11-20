@@ -100,27 +100,10 @@ class SpeechBrainLangId(BaseParallelProcessor):
         self.language_id = None
         
     def prepare(self):
-        """Load the SpeechBrain language ID model."""
+        """Validate imports. Model will be loaded lazily in workers."""
         try:
             import torch
             import torchaudio
-            
-            # Fix for torchaudio 2.1.0+ compatibility with speechbrain
-            # 1. Set backend if not already set (suppresses warning)
-            try:
-                if hasattr(torchaudio, 'set_audio_backend'):
-                    # For torchaudio < 2.1.0
-                    torchaudio.set_audio_backend("soundfile")
-                elif hasattr(torchaudio, 'get_audio_backend'):
-                    # For torchaudio >= 2.1.0, backend is automatic
-                    pass
-            except:
-                pass
-            
-            # 2. Monkey-patch list_audio_backends if it doesn't exist
-            if not hasattr(torchaudio, 'list_audio_backends'):
-                torchaudio.list_audio_backends = lambda: ['soundfile', 'sox_io']
-            
             from speechbrain.inference.classifiers import EncoderClassifier
         except ImportError as e:
             raise ImportError(
@@ -129,30 +112,48 @@ class SpeechBrainLangId(BaseParallelProcessor):
                 f"Error: {e}"
             )
         
-        logger.info(f"Loading SpeechBrain language ID model from {self.model_source}")
-        
         # Create save directory
         os.makedirs(self.save_dir, exist_ok=True)
         
-        # Load model
-        self.language_id = EncoderClassifier.from_hparams(
-            source=self.model_source,
-            savedir=self.save_dir,
-            run_opts={"device": self.device}
-        )
+        logger.info(f"SpeechBrain language ID model from {self.model_source} will be loaded lazily in each worker")
+    
+    def _get_model(self):
+        """Lazy load model in worker process (SpeechBrain models may not be picklable)."""
+        if self.language_id is None:
+            import torch
+            import torchaudio
+            
+            # Apply torchaudio compatibility fixes
+            if not hasattr(torchaudio, 'list_audio_backends'):
+                torchaudio.list_audio_backends = lambda: ['soundfile', 'sox_io']
+            
+            from speechbrain.inference.classifiers import EncoderClassifier
+            
+            logger.info(f"Loading SpeechBrain language ID model from {self.model_source} in worker")
+            
+            self.language_id = EncoderClassifier.from_hparams(
+                source=self.model_source,
+                savedir=self.save_dir,
+                run_opts={"device": self.device}
+            )
+            
+            logger.info("SpeechBrain language ID model loaded successfully in worker")
         
-        logger.info("SpeechBrain language ID model loaded successfully")
+        return self.language_id
     
     def process_dataset_entry(self, data_entry) -> List[DataEntry]:
         """Process a single audio file for language identification."""
         audio_filepath = data_entry[self.input_audio_key]
         
         try:
+            # Load model lazily in worker
+            language_id = self._get_model()
+            
             # Load audio
-            signal = self.language_id.load_audio(audio_filepath)
+            signal = language_id.load_audio(audio_filepath)
             
             # Perform language identification
-            prediction = self.language_id.classify_batch(signal)
+            prediction = language_id.classify_batch(signal)
             
             # Extract results
             # prediction is a tuple: (log_probs, confidence, index, [language_code])
@@ -187,6 +188,102 @@ class SpeechBrainLangId(BaseParallelProcessor):
             data_entry[self.output_confidence_key] = 0.0
         
         return [DataEntry(data=data_entry)]
+    
+    def read_manifest(self):
+        """Override to process in batches for better GPU utilization."""
+        import torch
+        
+        # Load model once for batch processing
+        language_id = self._get_model()
+        
+        # Read all entries
+        manifest_data = super().read_manifest()
+        
+        results = []
+        batch = []
+        batch_entries = []
+        
+        for entry in manifest_data:
+            audio_filepath = entry[self.input_audio_key]
+            
+            try:
+                # Load audio
+                signal = language_id.load_audio(audio_filepath)
+                batch.append(signal)
+                batch_entries.append(entry)
+                
+                # Process batch when full
+                if len(batch) >= self.batch_size:
+                    results.extend(self._process_batch(language_id, batch, batch_entries))
+                    batch = []
+                    batch_entries = []
+                    
+            except Exception as e:
+                logger.warning(f"Error loading {audio_filepath}: {e}")
+                entry[self.output_lang_key] = "error"
+                entry[self.output_confidence_key] = 0.0
+                results.append(entry)
+        
+        # Process remaining batch
+        if batch:
+            results.extend(self._process_batch(language_id, batch, batch_entries))
+        
+        return results
+    
+    def _process_batch(self, language_id, batch_signals, batch_entries):
+        """Process a batch of audio signals."""
+        import torch
+        
+        try:
+            # Stack signals and process in batch
+            batch_tensor = torch.stack(batch_signals)
+            
+            # Perform batch language identification
+            predictions = language_id.classify_batch(batch_tensor)
+            
+            # Extract results for each item
+            confidences = predictions[1].exp()  # Convert log to linear scale
+            lang_codes = predictions[3]  # Get language codes
+            
+            # Process results
+            for i, entry in enumerate(batch_entries):
+                confidence = confidences[i].item()
+                lang_code = lang_codes[i]
+                
+                # Clean language code
+                if ":" in lang_code:
+                    lang_code = lang_code.split(":")[0].strip()
+                
+                # Check confidence threshold
+                if confidence < self.min_confidence:
+                    lang_code = "unknown"
+                
+                entry[self.output_lang_key] = lang_code
+                entry[self.output_confidence_key] = round(confidence, 4)
+            
+        except Exception as e:
+            logger.warning(f"Error processing batch: {e}, processing individually")
+            # Fallback to individual processing
+            for signal, entry in zip(batch_signals, batch_entries):
+                try:
+                    prediction = language_id.classify_batch(signal.unsqueeze(0))
+                    confidence = prediction[1].exp().item()
+                    lang_code = prediction[3][0]
+                    
+                    if ":" in lang_code:
+                        lang_code = lang_code.split(":")[0].strip()
+                    
+                    if confidence < self.min_confidence:
+                        lang_code = "unknown"
+                    
+                    entry[self.output_lang_key] = lang_code
+                    entry[self.output_confidence_key] = round(confidence, 4)
+                except Exception as e2:
+                    logger.warning(f"Error in fallback processing: {e2}")
+                    entry[self.output_lang_key] = "error"
+                    entry[self.output_confidence_key] = 0.0
+        
+        return batch_entries
 
 
 class WhisperLangId(BaseParallelProcessor):
@@ -240,6 +337,7 @@ class WhisperLangId(BaseParallelProcessor):
         device: str = "cuda",
         compute_type: str = "float16",
         min_confidence: float = 0.5,
+        batch_size: int = 16,
         **kwargs,
     ):
         super().__init__(**kwargs)
@@ -250,10 +348,11 @@ class WhisperLangId(BaseParallelProcessor):
         self.device = device
         self.compute_type = compute_type
         self.min_confidence = min_confidence
+        self.batch_size = batch_size
         self.model = None
         
     def prepare(self):
-        """Load the Faster Whisper model."""
+        """Validate imports. Model will be loaded lazily in workers."""
         try:
             from faster_whisper import WhisperModel
         except ImportError:
@@ -262,23 +361,31 @@ class WhisperLangId(BaseParallelProcessor):
                 "Please install it with: pip install faster-whisper"
             )
         
-        logger.info(f"Loading Faster Whisper {self.model_size} model")
-        
-        self.model = WhisperModel(
-            self.model_size,
-            device=self.device,
-            compute_type=self.compute_type
-        )
-        
-        logger.info("Faster Whisper model loaded successfully")
+        logger.info(f"Faster Whisper {self.model_size} will be loaded lazily in each worker")
+    
+    def _get_model(self):
+        """Lazy load model in worker process (not picklable)."""
+        if self.model is None:
+            from faster_whisper import WhisperModel
+            logger.info(f"Loading Faster Whisper {self.model_size} model in worker")
+            self.model = WhisperModel(
+                self.model_size,
+                device=self.device,
+                compute_type=self.compute_type
+            )
+            logger.info("Faster Whisper model loaded successfully in worker")
+        return self.model
     
     def process_dataset_entry(self, data_entry) -> List[DataEntry]:
         """Process a single audio file for language identification."""
         audio_filepath = data_entry[self.input_audio_key]
         
         try:
+            # Load model lazily in worker
+            model = self._get_model()
+            
             # Detect language using first 30 seconds
-            audio_info = self.model.detect_language(audio_filepath)
+            audio_info = model.detect_language(audio_filepath)
             
             # audio_info is a tuple: (language_code, confidence)
             lang_code = audio_info[0]
@@ -307,6 +414,50 @@ class WhisperLangId(BaseParallelProcessor):
             data_entry[self.output_confidence_key] = 0.0
         
         return [DataEntry(data=data_entry)]
+    
+    def read_manifest(self):
+        """Override to process in batches for better throughput."""
+        from tqdm import tqdm
+        
+        # Load model once
+        model = self._get_model()
+        
+        # Read all entries
+        manifest_data = super().read_manifest()
+        
+        logger.info(f"Processing {len(manifest_data)} files with Faster Whisper in batches of {self.batch_size}")
+        
+        results = []
+        
+        # Process in batches for better I/O pipelining
+        for i in tqdm(range(0, len(manifest_data), self.batch_size), desc="Whisper LangID batches"):
+            batch = manifest_data[i:i + self.batch_size]
+            
+            for entry in batch:
+                audio_filepath = entry[self.input_audio_key]
+                
+                try:
+                    # Detect language (Faster Whisper processes sequentially)
+                    audio_info = model.detect_language(audio_filepath)
+                    
+                    lang_code = audio_info[0]
+                    confidence = audio_info[1]
+                    
+                    # Check confidence threshold
+                    if confidence < self.min_confidence:
+                        lang_code = "unknown"
+                    
+                    entry[self.output_lang_key] = lang_code
+                    entry[self.output_confidence_key] = round(confidence, 4)
+                    
+                except Exception as e:
+                    logger.warning(f"Error processing {audio_filepath}: {e}")
+                    entry[self.output_lang_key] = "error"
+                    entry[self.output_confidence_key] = 0.0
+                
+                results.append(entry)
+        
+        return results
 
 
 class CrossValidateLangId(BaseParallelProcessor):

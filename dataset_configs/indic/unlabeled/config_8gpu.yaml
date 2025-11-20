@@ -193,6 +193,7 @@ processors:
     model_source: "speechbrain/lang-id-voxlingua107-ecapa"
     min_confidence: ${langid_min_confidence}
     device: cuda
+    batch_size: 64  # Larger batch for 8-GPU system
 
   - _target_: sdp.processors.WhisperLangId
     output_manifest_file: ${manifest_dir}/08_with_whisper_langid.json
@@ -202,6 +203,7 @@ processors:
     model_size: "large-v3"
     min_confidence: ${langid_min_confidence}
     device: cuda
+    batch_size: 32  # Larger batch for 8-GPU system
 
   - _target_: sdp.processors.CrossValidateLangId
     output_manifest_file: ${manifest_dir}/09_with_consensus_lang.json
