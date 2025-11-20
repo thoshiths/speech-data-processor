@@ -456,9 +456,10 @@ def generate_vad_frame_pred(
             with torch.amp.autocast(vad_model.device.type):
                 with record_fn("vad_infer_model"):
                     if use_feat:
-                        # Use input_signal parameter name (NeMo VAD model API)
-                        log_probs = vad_model(input_signal=test_batch[0], input_signal_length=test_batch[1])
+                        # When using features, pass processed features directly
+                        log_probs = vad_model.forward(processed_signal=test_batch[0], processed_signal_length=test_batch[1])
                     else:
+                        # When using raw audio, use input_signal
                         log_probs = vad_model(input_signal=test_batch[0], input_signal_length=test_batch[1])
 
                 with record_fn("vad_infer_other"):
