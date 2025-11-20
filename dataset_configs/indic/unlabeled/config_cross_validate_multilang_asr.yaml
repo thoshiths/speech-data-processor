@@ -205,9 +205,7 @@ processors:
     model_size: "large-v3"
     min_confidence: ${langid_min_confidence}
     device: cuda
-    batch_size: 16  # Batch processing for better GPU utilization
-    use_dask: False  # Disable Dask (custom batch processing avoids Dask overhead)
-    max_workers: 1  # Serial processing (custom batch method handles batching)
+    # Note: use_dask defaults to True - model loads lazily in each worker
 
   - _target_: sdp.processors.CrossValidateLangId
     output_manifest_file: ${manifest_dir}/09_with_consensus_lang.json
