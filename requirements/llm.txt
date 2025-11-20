@@ -1,0 +1,22 @@
+# LLM and Advanced NLP Dependencies
+
+# vLLM for fast LLM inference (punctuation, text generation)
+vllm>=0.6.0
+optree>=0.13.0
+
+# Alternative: Use transformers with optimizations
+transformers>=4.40.0
+accelerate>=0.30.0
+bitsandbytes>=0.43.0  # For quantization
+
+# SpeechBrain for additional models
+speechbrain>=1.0.0
+
+# Faster Whisper for efficient ASR/LangID
+faster-whisper>=1.0.0
+ctranslate2>=4.0.0
+
+# CUDA dependencies (install separately if needed)
+# nvidia-cublas-cu12
+# nvidia-cudnn-cu12>=9.0.0
+

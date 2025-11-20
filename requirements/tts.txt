@@ -1,6 +1,16 @@
-transformers
-accelerate
-torchaudio
-pyannote-audio
-ffmpeg-python
-whisperx==3.3.1
+# TTS-specific Dependencies
+transformers>=4.40.0
+accelerate>=0.30.0
+torchaudio>=2.0.0
+pyannote-audio>=3.1.0
+ffmpeg-python>=0.2.0
+whisperx>=3.3.0  # Removed exact pin for flexibility
+
+# Audio Quality Assessment
+torch>=2.0.0
+torchaudio>=2.0.0
+librosa>=0.10.0
+numpy>=1.26.0, <2.0
+
+# For SQUIM quality metrics (used by audio quality processors)
+# These are typically included with torchaudio, but listed for clarity

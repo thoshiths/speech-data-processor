@@ -1,0 +1,16 @@
+# Audio Quality Assessment Dependencies
+
+# SQUIM and audio quality metrics
+torch>=2.0.0
+torchaudio>=2.0.0
+librosa>=0.10.0
+numpy>=1.26.0, <2.0
+scipy>=1.11.0
+
+# Quality estimation
+pymarian>=0.5.0  # For translation quality estimation
+
+# Audio analysis
+soundfile>=0.12.0
+resampy>=0.4.0
+
