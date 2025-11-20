@@ -87,7 +87,14 @@ from nemo.utils import logging
 
 # Apply VAD loading patch at module level to fix checkpoint compatibility
 try:
-    from .vad_patch import apply_vad_patches
+    import sys
+    from pathlib import Path as PathLib
+    # Add the utils directory to path for vad_patch import
+    utils_dir = PathLib(__file__).parent
+    if str(utils_dir) not in sys.path:
+        sys.path.insert(0, str(utils_dir))
+    
+    from vad_patch import apply_vad_patches
     apply_vad_patches()
     logging.info("Applied NeMo VAD compatibility patches")
 except Exception as e:
