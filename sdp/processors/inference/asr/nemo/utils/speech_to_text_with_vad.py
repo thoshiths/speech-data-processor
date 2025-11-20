@@ -338,7 +338,9 @@ def run_vad_inference(manifest_filepath: str, cfg: DictConfig, record_fn: Callab
         'window_length_in_sec': vad_cfg.vad.parameters.window_length_in_sec,
         'shift_length_in_sec': vad_cfg.vad.parameters.shift_length_in_sec,
     }
-    vad_model.setup_test_data(test_data_config=test_data_config, use_feat=True)
+    # Use raw audio instead of pre-extracted features (use_feat=False)
+    # This avoids the need to extract features separately
+    vad_model.setup_test_data(test_data_config=test_data_config, use_feat=False)
 
     pred_dir = Path(cfg.output_dir) / Path("vad_frame_pred")
     if pred_dir.is_dir():
@@ -353,7 +355,7 @@ def run_vad_inference(manifest_filepath: str, cfg: DictConfig, record_fn: Callab
             shift_length_in_sec=vad_cfg.vad.parameters.shift_length_in_sec,
             manifest_vad_input=manifest_filepath,
             out_dir=str(pred_dir),
-            use_feat=True,
+            use_feat=False,  # Use raw audio
             record_fn=record_fn,
         )
         t1 = time.time()
