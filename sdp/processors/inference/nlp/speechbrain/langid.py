@@ -19,6 +19,17 @@ This processor uses SpeechBrain's pre-trained VoxLingua107 ECAPA model
 for audio-based language identification.
 """
 
+# CRITICAL: Apply torchaudio compatibility patch BEFORE any imports
+# This fixes Dask serialization issues with SpeechBrain
+try:
+    import torchaudio
+    if not hasattr(torchaudio, 'list_audio_backends'):
+        torchaudio.list_audio_backends = lambda: ['soundfile', 'sox_io']
+    if not hasattr(torchaudio, 'get_audio_backend'):
+        torchaudio.get_audio_backend = lambda: 'soundfile'
+except:
+    pass
+
 from typing import List, Optional
 import os
 

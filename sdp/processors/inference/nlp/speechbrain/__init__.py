@@ -12,3 +12,20 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+# Apply torchaudio compatibility patch at package init time (for Dask workers)
+try:
+    import torchaudio
+    if not hasattr(torchaudio, 'list_audio_backends'):
+        torchaudio.list_audio_backends = lambda: ['soundfile', 'sox_io']
+    if not hasattr(torchaudio, 'get_audio_backend'):
+        torchaudio.get_audio_backend = lambda: 'soundfile'
+except:
+    pass
+
+from sdp.processors.inference.nlp.speechbrain.langid import (
+    SpeechBrainLangId,
+    WhisperLangId,
+    CrossValidateLangId,
+)
+
+__all__ = ['SpeechBrainLangId', 'WhisperLangId', 'CrossValidateLangId']
