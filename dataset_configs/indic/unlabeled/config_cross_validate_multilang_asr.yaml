@@ -69,16 +69,16 @@ target_languages: ["hi", "en"]  # All 12 languages
 
 # ASR Model paths (only required for languages in target_languages list)
 model_hi: /shared/models/vachana_hybrid_xxl_hi_in.nemo  # Hindi
-model_te: ???  # Telugu  
-model_ta: ???  # Tamil
-model_bn: ???  # Bengali
-model_ml: ???  # Malayalam
-model_kn: ???  # Kannada
-model_mr: ???  # Marathi
-model_gu: ???  # Gujarati
-model_pa: ???  # Punjabi
-model_or: ???  # Odia
-model_as: ???  # Assamese
+model_te: /shared/models/vachana_hybrid_xxl_te_in.nemo  # Telugu  
+model_ta: /shared/models/vachana_hybrid_xxl_ta_in.nemo  # Tamil
+model_bn: /shared/models/vachana_hybrid_xxl_bn_in.nemo  # Bengali
+model_ml: /shared/models/vachana_hybrid_xxl_ml_in.nemo  # Malayalam
+model_kn: /shared/models/vachana_hybrid_xxl_kn_in.nemo  # Kannada
+model_mr: /shared/models/vachana_hybrid_xxl_mr_in.nemo  # Marathi
+model_gu: /shared/models/vachana_hybrid_xxl_gu_in.nemo  # Gujarati
+model_pa: /shared/models/vachana_hybrid_xxl_pa_in.nemo  # Punjabi
+model_or: /shared/models/vachana_hybrid_xxl_hi_in.nemo  # Odia
+model_as: /shared/models/vachana_hybrid_xxl_hi_in.nemo  # Assamese
 model_en: /shared/models/vachana_tdt_xl_en_in.nemo  # English
 
 # Optional parameters
