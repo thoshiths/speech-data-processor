@@ -384,6 +384,19 @@ class WhisperLangId(BaseParallelProcessor):
         self.min_confidence = min_confidence
         self.batch_size = batch_size
         self.model = None
+    
+    def __getstate__(self):
+        """Exclude non-picklable model from serialization."""
+        state = self.__dict__.copy()
+        # Remove the model - it will be loaded lazily in each worker
+        state['model'] = None
+        return state
+    
+    def __setstate__(self, state):
+        """Restore state after deserialization."""
+        self.__dict__.update(state)
+        # Ensure model is None after deserialization
+        self.model = None
         
     def prepare(self):
         """Validate imports. Model will be loaded lazily in workers."""
@@ -412,26 +425,60 @@ class WhisperLangId(BaseParallelProcessor):
     
     def process_dataset_entry(self, data_entry) -> List[DataEntry]:
         """Process a single audio file for language identification."""
+        import os
+        import numpy as np
+        
         audio_filepath = data_entry[self.input_audio_key]
         
         try:
+            # Normalize file path (handle double slashes, etc.)
+            audio_filepath = os.path.normpath(audio_filepath)
+            
+            # Verify file exists
+            if not os.path.exists(audio_filepath):
+                raise FileNotFoundError(f"Audio file not found: {audio_filepath}")
+            
             # Load model lazily in worker
             model = self._get_model()
             
-            # Use Faster Whisper's detect_language with file path (stable API)
-            # Returns tuple: (language_code, language_probability, all_language_probs)
-            lang_info = model.detect_language(audio_filepath)
+            # Verify model is loaded properly
+            if model is None:
+                raise RuntimeError("Failed to load Faster Whisper model")
             
-            # Handle different return formats
-            if isinstance(lang_info, tuple):
-                if len(lang_info) >= 2:
-                    lang_code = lang_info[0]
-                    confidence = float(lang_info[1])
-                else:
-                    lang_code = str(lang_info[0])
-                    confidence = 1.0
+            # Load audio with librosa for better compatibility
+            # This avoids issues with faster-whisper's internal audio loading
+            try:
+                import librosa
+                audio, sr = librosa.load(audio_filepath, sr=16000, mono=True)
+                # Ensure audio is float32 numpy array
+                if not isinstance(audio, np.ndarray):
+                    raise TypeError(f"Expected numpy array, got {type(audio)}")
+                audio = audio.astype(np.float32)
+            except Exception as e:
+                logger.warning(f"Failed to load audio with librosa, trying direct path: {e}")
+                # Fallback to file path if librosa fails
+                audio = audio_filepath
+            
+            # Use Faster Whisper's detect_language 
+            # Returns: LanguageInfo(language, language_probability, all_language_probs)
+            # Or tuple in some versions
+            lang_info = model.detect_language(audio)
+            
+            # Handle different return formats from different faster-whisper versions
+            if hasattr(lang_info, 'language'):
+                # LanguageInfo object (newer versions)
+                lang_code = str(lang_info.language)
+                confidence = float(lang_info.language_probability)
+            elif isinstance(lang_info, tuple) and len(lang_info) >= 2:
+                # Tuple format (older versions)
+                lang_code = str(lang_info[0])
+                confidence = float(lang_info[1])
+            elif isinstance(lang_info, tuple) and len(lang_info) == 1:
+                # Single item tuple
+                lang_code = str(lang_info[0])
+                confidence = 1.0
             else:
-                # Single value returned
+                # Single value (string or other)
                 lang_code = str(lang_info)
                 confidence = 1.0
             
@@ -453,7 +500,9 @@ class WhisperLangId(BaseParallelProcessor):
             )
             
         except Exception as e:
+            import traceback
             logger.warning(f"Error processing {audio_filepath}: {e}")
+            logger.debug(f"Full traceback: {traceback.format_exc()}")
             data_entry[self.output_lang_key] = "error"
             data_entry[self.output_confidence_key] = 0.0
         
