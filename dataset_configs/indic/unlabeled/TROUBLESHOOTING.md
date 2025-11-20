@@ -2,7 +2,32 @@
 
 ## Common Errors and Solutions
 
-### 1. `AttributeError: module 'torchaudio' has no attribute 'list_audio_backends'`
+### 1. `AttributeError: 'np.sctypes' was removed in the NumPy 2.0 release`
+
+**Error:**
+```
+AttributeError: `np.sctypes` was removed in the NumPy 2.0 release. 
+Access dtypes explicitly instead.
+```
+
+**Cause:** 
+- You have NumPy 2.0 or later installed
+- NeMo is not yet compatible with NumPy 2.0
+
+**Solution:**
+```bash
+# Downgrade numpy to 1.x
+pip install "numpy<2.0.0"
+
+# Or reinstall all requirements with the correct numpy
+pip install -r requirements/main.txt
+```
+
+✅ **Already Fixed in requirements!** If you install fresh, numpy will be pinned to < 2.0
+
+---
+
+### 2. `AttributeError: module 'torchaudio' has no attribute 'list_audio_backends'`
 
 **Error:**
 ```
@@ -59,7 +84,7 @@ pip install -r requirements/llm.txt
 
 ---
 
-### 3. `InterpolationKeyError: 'model_te' not found`
+### 4. `InterpolationKeyError: 'model_te' not found`
 
 **Error:**
 ```
@@ -93,7 +118,7 @@ python main.py \
 
 ---
 
-### 4. `RuntimeError: Error(s) in loading state_dict for EncDecFrameClassificationModel: Unexpected key(s) in state_dict: "loss.weight"`
+### 5. `RuntimeError: Error(s) in loading state_dict for EncDecFrameClassificationModel: Unexpected key(s) in state_dict: "loss.weight"`
 
 **Error:**
 ```
@@ -123,7 +148,7 @@ python main.py \
 
 ---
 
-### 5. `DropOnAttribute.__init__() missing 1 required positional argument: 'key'`
+### 6. `DropOnAttribute.__init__() missing 1 required positional argument: 'key'`
 
 **Error:**
 ```
