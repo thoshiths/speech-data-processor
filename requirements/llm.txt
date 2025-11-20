@@ -10,6 +10,7 @@ accelerate>=0.30.0
 bitsandbytes>=0.43.0  # For quantization
 
 # SpeechBrain for additional models
+# Note: Includes compatibility patch for torchaudio 2.1.0+
 speechbrain>=1.0.0
 
 # Faster Whisper for efficient ASR/LangID

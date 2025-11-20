@@ -442,6 +442,7 @@ processors:
 
   # Step 19: Calculate SQUIM Quality Metrics (PESQ, STOI, SI-SDR)
   - _target_: sdp.processors.SquimQualityMetrics
+    input_manifest_file: ${manifest_dir}/17_all_transcribed.json
     output_manifest_file: ${manifest_dir}/18_with_squim_metrics.json
     audio_filepath_key: audio_filepath
     output_pesq_key: pesq
@@ -452,50 +453,57 @@ processors:
 
   # Step 20: Estimate Bandwidth
   - _target_: sdp.processors.BandwidthEstimation
+    input_manifest_file: ${manifest_dir}/18_with_squim_metrics.json
     output_manifest_file: ${manifest_dir}/19_with_bandwidth.json
     audio_filepath_key: audio_filepath
     output_bandwidth_key: bandwidth_hz
 
   # Step 21: Estimate SNR (Signal-to-Noise Ratio)
   - _target_: sdp.processors.SNREstimation
+    input_manifest_file: ${manifest_dir}/19_with_bandwidth.json
     output_manifest_file: ${manifest_dir}/20_with_snr.json
     audio_filepath_key: audio_filepath
     output_snr_key: snr_db
 
-  # Step 22: Filter by PESQ (Perceptual Quality)
-  - _target_: sdp.processors.DropOnAttribute
+  # Step 22: Filter by PESQ (Keep entries >= minimum threshold)
+  - _target_: sdp.processors.PreserveByValue
+    input_manifest_file: ${manifest_dir}/20_with_snr.json
     output_manifest_file: ${manifest_dir}/21_filtered_pesq.json
-    attribute_key: pesq
-    operator: "<"
-    value: ${min_pesq}
+    input_value_key: pesq
+    target_value: ${min_pesq}
+    operator: "ge"  # greater than or equal
 
-  # Step 23: Filter by STOI (Intelligibility)
-  - _target_: sdp.processors.DropOnAttribute
+  # Step 23: Filter by STOI (Keep entries >= minimum threshold)
+  - _target_: sdp.processors.PreserveByValue
+    input_manifest_file: ${manifest_dir}/21_filtered_pesq.json
     output_manifest_file: ${manifest_dir}/22_filtered_stoi.json
-    attribute_key: stoi
-    operator: "<"
-    value: ${min_stoi}
+    input_value_key: stoi
+    target_value: ${min_stoi}
+    operator: "ge"
 
-  # Step 24: Filter by SI-SDR (Signal-to-Distortion)
-  - _target_: sdp.processors.DropOnAttribute
+  # Step 24: Filter by SI-SDR (Keep entries >= minimum threshold)
+  - _target_: sdp.processors.PreserveByValue
+    input_manifest_file: ${manifest_dir}/22_filtered_stoi.json
     output_manifest_file: ${manifest_dir}/23_filtered_sisdr.json
-    attribute_key: sisdr
-    operator: "<"
-    value: ${min_sisdr}
+    input_value_key: sisdr
+    target_value: ${min_sisdr}
+    operator: "ge"
 
-  # Step 25: Filter by SNR (Signal-to-Noise)
-  - _target_: sdp.processors.DropOnAttribute
+  # Step 25: Filter by SNR (Keep entries >= minimum threshold)
+  - _target_: sdp.processors.PreserveByValue
+    input_manifest_file: ${manifest_dir}/23_filtered_sisdr.json
     output_manifest_file: ${manifest_dir}/24_filtered_snr.json
-    attribute_key: snr_db
-    operator: "<"
-    value: ${min_snr}
+    input_value_key: snr_db
+    target_value: ${min_snr}
+    operator: "ge"
 
-  # Step 26: Filter by Bandwidth
-  - _target_: sdp.processors.DropOnAttribute
+  # Step 26: Filter by Bandwidth (Keep entries >= minimum threshold)
+  - _target_: sdp.processors.PreserveByValue
+    input_manifest_file: ${manifest_dir}/24_filtered_snr.json
     output_manifest_file: ${manifest_dir}/25_filtered_bandwidth.json
-    attribute_key: bandwidth_hz
-    operator: "<"
-    value: ${min_bandwidth}
+    input_value_key: bandwidth_hz
+    target_value: ${min_bandwidth}
+    operator: "ge"
 
   # ============================================================
   # STAGE 8: PUNCTUATION RESTORATION (Optional)

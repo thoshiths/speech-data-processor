@@ -91,12 +91,20 @@ class SpeechBrainLangId(BaseParallelProcessor):
     def prepare(self):
         """Load the SpeechBrain language ID model."""
         try:
-            from speechbrain.inference.classifiers import EncoderClassifier
             import torch
-        except ImportError:
+            import torchaudio
+            
+            # Fix for torchaudio 2.1.0+ compatibility with speechbrain
+            # speechbrain expects list_audio_backends() which was removed in torchaudio 2.1.0
+            if not hasattr(torchaudio, 'list_audio_backends'):
+                torchaudio.list_audio_backends = lambda: []
+            
+            from speechbrain.inference.classifiers import EncoderClassifier
+        except ImportError as e:
             raise ImportError(
-                "SpeechBrain is not installed. "
-                "Please install it with: pip install speechbrain torchaudio"
+                "SpeechBrain or torchaudio is not installed. "
+                "Please install with: pip install speechbrain torchaudio\n"
+                f"Error: {e}"
             )
         
         logger.info(f"Loading SpeechBrain language ID model from {self.model_source}")
