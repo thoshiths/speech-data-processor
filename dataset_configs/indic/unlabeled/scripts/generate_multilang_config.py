@@ -150,6 +150,7 @@ LANGID_STAGE = '''  # ==========================================================
     model_source: "speechbrain/lang-id-voxlingua107-ecapa"
     min_confidence: ${langid_min_confidence}
     device: cuda
+    use_dask: False  # Disable Dask (custom batch processing avoids Dask overhead)
 
   - _target_: sdp.processors.WhisperLangId
     output_manifest_file: ${manifest_dir}/08_with_whisper_langid.json
@@ -159,6 +160,7 @@ LANGID_STAGE = '''  # ==========================================================
     model_size: "large-v3"
     min_confidence: ${langid_min_confidence}
     device: cuda
+    use_dask: False  # Disable Dask (custom batch processing avoids Dask overhead)
 
   - _target_: sdp.processors.CrossValidateLangId
     output_manifest_file: ${manifest_dir}/09_with_consensus_lang.json
