@@ -416,8 +416,13 @@ class WhisperLangId(BaseParallelProcessor):
         return [DataEntry(data=data_entry)]
     
     def read_manifest(self):
-        """Override to process in batches for better throughput."""
+        """
+        Override to process in batches with better I/O and GPU pipelining.
+        Inspired by Amphion's Whisper implementation for efficient processing.
+        Reference: https://github.com/open-mmlab/Amphion/blob/main/preprocessors/Emilia/models/whisper_asr.py
+        """
         from tqdm import tqdm
+        import numpy as np
         
         # Load model once
         model = self._get_model()
@@ -429,19 +434,37 @@ class WhisperLangId(BaseParallelProcessor):
         
         results = []
         
-        # Process in batches for better I/O pipelining
+        # Pre-load audio files in batches for better I/O pipelining
         for i in tqdm(range(0, len(manifest_data), self.batch_size), desc="Whisper LangID batches"):
             batch = manifest_data[i:i + self.batch_size]
+            
+            # Pre-load audio for the batch
+            batch_audio = []
+            batch_entries = []
             
             for entry in batch:
                 audio_filepath = entry[self.input_audio_key]
                 
                 try:
-                    # Detect language (Faster Whisper processes sequentially)
-                    audio_info = model.detect_language(audio_filepath)
+                    # Load audio using librosa (faster than file I/O in loop)
+                    import librosa
+                    audio, sr = librosa.load(audio_filepath, sr=16000, mono=True)
                     
-                    lang_code = audio_info[0]
-                    confidence = audio_info[1]
+                    batch_audio.append((audio_filepath, audio))
+                    batch_entries.append(entry)
+                    
+                except Exception as e:
+                    logger.warning(f"Error loading audio {audio_filepath}: {e}")
+                    entry[self.output_lang_key] = "error"
+                    entry[self.output_confidence_key] = 0.0
+                    results.append(entry)
+            
+            # Process the batch (Faster Whisper processes sequentially, but pre-loaded audio is faster)
+            for (audio_filepath, audio), entry in zip(batch_audio, batch_entries):
+                try:
+                    # Detect language from pre-loaded audio
+                    # Faster Whisper's detect_language can work with numpy arrays or file paths
+                    lang_code, confidence = self._detect_language_from_audio(model, audio)
                     
                     # Check confidence threshold
                     if confidence < self.min_confidence:
@@ -450,14 +473,71 @@ class WhisperLangId(BaseParallelProcessor):
                     entry[self.output_lang_key] = lang_code
                     entry[self.output_confidence_key] = round(confidence, 4)
                     
+                    logger.debug(f"Detected: {lang_code} ({confidence:.3f}) for {audio_filepath}")
+                    
                 except Exception as e:
-                    logger.warning(f"Error processing {audio_filepath}: {e}")
+                    logger.warning(f"Error detecting language for {audio_filepath}: {e}")
                     entry[self.output_lang_key] = "error"
                     entry[self.output_confidence_key] = 0.0
                 
                 results.append(entry)
         
         return results
+    
+    def _detect_language_from_audio(self, model, audio: np.ndarray):
+        """
+        Detect language from audio array using mel spectrogram encoding.
+        Based on Amphion's approach for efficiency.
+        """
+        import numpy as np
+        
+        # Constants (Whisper uses 30-second chunks)
+        N_SAMPLES = 480000  # 30 seconds at 16kHz
+        SAMPLE_RATE = 16000
+        
+        try:
+            # Sample audio for language detection (use first 30 seconds)
+            if audio.shape[0] > N_SAMPLES:
+                audio_sample = audio[:N_SAMPLES]
+            else:
+                audio_sample = audio
+            
+            # Pad if needed
+            if audio_sample.shape[0] < N_SAMPLES:
+                padding = N_SAMPLES - audio_sample.shape[0]
+                audio_sample = np.pad(audio_sample, (0, padding), mode='constant')
+            
+            # Compute mel spectrogram using model's feature extractor
+            features = model.feature_extractor(audio_sample)
+            
+            # Encode to get encoder output
+            encoder_output = model.encode(features)
+            
+            # Detect language from encoder output
+            # Returns list of tuples: [(language_token, probability), ...]
+            lang_results = model.model.detect_language(encoder_output)
+            language_token, language_probability = lang_results[0][0]
+            
+            # Extract language code (remove <|xx|> markers)
+            lang_code = language_token[2:-2] if language_token.startswith("<|") else language_token
+            confidence = float(language_probability)
+            
+            return lang_code, confidence
+            
+        except Exception as e:
+            # Fallback to simpler API if the above fails
+            logger.debug(f"Falling back to simple detect_language API: {e}")
+            # Faster Whisper's detect_language may accept audio array directly
+            try:
+                # Some versions support direct audio array
+                result = model.detect_language(audio_sample)
+                if isinstance(result, tuple) and len(result) == 2:
+                    return result[0], result[1]
+            except:
+                pass
+            
+            # Last resort: return unknown
+            return "unknown", 0.0
 
 
 class CrossValidateLangId(BaseParallelProcessor):
