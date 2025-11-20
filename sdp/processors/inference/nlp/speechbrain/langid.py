@@ -193,12 +193,25 @@ class SpeechBrainLangId(BaseParallelProcessor):
     def read_manifest(self):
         """Override to process in batches for better GPU utilization."""
         import torch
+        import json
+        
+        # Ensure batch_size exists (for backwards compatibility with Dask serialization)
+        if not hasattr(self, 'batch_size'):
+            self.batch_size = 32
+            logger.warning("batch_size not found, using default: 32")
         
         # Load model once for batch processing
         language_id = self._get_model()
         
-        # Read all entries
-        manifest_data = super().read_manifest()
+        # Read manifest file directly (not using Dask Bag)
+        manifest_data = []
+        with open(self.input_manifest_file, 'r', encoding='utf-8') as f:
+            for line in f:
+                line = line.strip()
+                if line:
+                    manifest_data.append(json.loads(line))
+        
+        logger.info(f"Processing {len(manifest_data)} files with SpeechBrain in batches of {self.batch_size}")
         
         results = []
         batch = []
@@ -232,12 +245,27 @@ class SpeechBrainLangId(BaseParallelProcessor):
         return results
     
     def _process_batch(self, language_id, batch_signals, batch_entries):
-        """Process a batch of audio signals."""
+        """Process a batch of audio signals with padding for variable lengths."""
         import torch
+        import torch.nn.functional as F
         
         try:
+            # Find max length in batch
+            max_length = max(signal.shape[0] for signal in batch_signals)
+            
+            # Pad all signals to max length
+            padded_signals = []
+            for signal in batch_signals:
+                if signal.shape[0] < max_length:
+                    # Pad to max length
+                    padding = max_length - signal.shape[0]
+                    padded_signal = F.pad(signal, (0, padding))
+                    padded_signals.append(padded_signal)
+                else:
+                    padded_signals.append(signal)
+            
             # Stack signals and process in batch
-            batch_tensor = torch.stack(batch_signals)
+            batch_tensor = torch.stack(padded_signals)
             
             # Perform batch language identification
             predictions = language_id.classify_batch(batch_tensor)
@@ -424,12 +452,23 @@ class WhisperLangId(BaseParallelProcessor):
         """
         from tqdm import tqdm
         import numpy as np
+        import json
+        
+        # Ensure batch_size exists (for backwards compatibility with Dask serialization)
+        if not hasattr(self, 'batch_size'):
+            self.batch_size = 16
+            logger.warning("batch_size not found, using default: 16")
         
         # Load model once
         model = self._get_model()
         
-        # Read all entries
-        manifest_data = super().read_manifest()
+        # Read manifest file directly (not using Dask Bag)
+        manifest_data = []
+        with open(self.input_manifest_file, 'r', encoding='utf-8') as f:
+            for line in f:
+                line = line.strip()
+                if line:
+                    manifest_data.append(json.loads(line))
         
         logger.info(f"Processing {len(manifest_data)} files with Faster Whisper in batches of {self.batch_size}")
         
