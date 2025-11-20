@@ -457,7 +457,7 @@ def generate_vad_frame_pred(
                 with record_fn("vad_infer_model"):
                     if use_feat:
                         # Use input_signal parameter name (NeMo VAD model API)
-        log_probs = vad_model(input_signal=test_batch[0], input_signal_length=test_batch[1])
+                        log_probs = vad_model(input_signal=test_batch[0], input_signal_length=test_batch[1])
                     else:
                         log_probs = vad_model(input_signal=test_batch[0], input_signal_length=test_batch[1])
 
