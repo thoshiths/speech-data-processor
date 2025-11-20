@@ -32,6 +32,7 @@ except:
 
 from typing import List, Optional
 import os
+import numpy as np
 
 from sdp.processors.base_processor import BaseParallelProcessor, DataEntry
 from sdp.logging import logger
