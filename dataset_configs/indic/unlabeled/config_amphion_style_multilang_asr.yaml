@@ -1,0 +1,244 @@
+documentation: |
+  Amphion-Style Multi-Language ASR Pipeline
+  ##########################################
+  
+  This configuration uses the Amphion/Emilia preprocessing approach:
+  1. Source Separation (remove BGM/noise)
+  2. Speaker Diarization (identify speakers)
+  3. Silero VAD (fine-grained segmentation, 3-30s)
+  4. Whisper Language Detection (per-segment, no ASR)
+  5. Language-Based ASR Routing (route to NeMo models by language)
+  
+  **Key Improvements over standard pipeline:**
+  - Source separation for cleaner audio
+  - Per-segment language detection (handles mixed-language audio)
+  - Batched ASR by language for efficiency
+  - Avoids CUDA/multiprocessing issues
+  
+  **Requirements:**
+  - UVR-MDX-NET-Inst_HQ_3.onnx model for source separation
+    Download: https://github.com/TRvlvr/model_repo/releases/download/all_public_uvr_models/UVR-MDX-NET-Inst_HQ_3.onnx
+  - HuggingFace token for PyAnnote speaker diarization
+    Get: https://huggingface.co/settings/tokens
+    Grant access: https://huggingface.co/pyannote/speaker-diarization-3.1
+  
+  **Example Usage:**
+  
+  .. code-block:: bash
+  
+      python main.py \\
+        --config-path="dataset_configs/indic/unlabeled" \\
+        --config-name="config_amphion_style_multilang_asr.yaml" \\
+        processors_to_run="0:" \\
+        workspace_dir="/data/mixed_audio" \\
+        separation_model_path="/models/UVR-MDX-NET-Inst_HQ_3.onnx" \\
+        hf_token="hf_xxxxx" \\
+        target_languages='["hi","te","en"]' \\
+        model_hi="/models/hindi.nemo" \\
+        model_te="/models/telugu.nemo" \\
+        model_en="/models/english.nemo"
+
+processors_to_run: "0:"
+
+# Required parameters
+workspace_dir: ???
+separation_model_path: ???  # Path to UVR-MDX-NET-Inst_HQ_3.onnx
+hf_token: ???  # HuggingFace token for PyAnnote
+
+# Languages to process
+target_languages: ["hi", "en"]
+
+# ASR Model paths (only for languages in target_languages)
+model_hi: /shared/models/vachana_hybrid_xxl_hi_in.nemo  # Hindi
+model_te: /shared/models/vachana_hybrid_xxl_te_in.nemo  # Telugu  
+model_ta: /shared/models/vachana_hybrid_xxl_ta_in.nemo  # Tamil
+model_bn: /shared/models/vachana_hybrid_xxl_bn_in.nemo  # Bengali
+model_ml: /shared/models/vachana_hybrid_xxl_ml_in.nemo  # Malayalam
+model_kn: /shared/models/vachana_hybrid_xxl_kn_in.nemo  # Kannada
+model_mr: /shared/models/vachana_hybrid_xxl_mr_in.nemo  # Marathi
+model_gu: /shared/models/vachana_hybrid_xxl_gu_in.nemo  # Gujarati
+model_pa: /shared/models/vachana_hybrid_xxl_pa_in.nemo  # Punjabi
+model_or: /shared/models/vachana_hybrid_xxl_hi_in.nemo  # Odia
+model_as: /shared/models/vachana_hybrid_xxl_hi_in.nemo  # Assamese
+model_en: /shared/models/vachana_tdt_xl_en_in.nemo  # English
+
+# Optional parameters
+audio_extension: wav
+min_segment_duration: 3.0
+max_segment_duration: 30.0
+asr_batch_size: 32
+whisper_min_confidence: 0.8
+
+# Derived paths
+manifest_dir: ${workspace_dir}/manifests
+raw_audio_dir: /datasets/opensource-data-collection/youtube-raw-audio/Aa/
+separated_audio_dir: ${workspace_dir}/separated_audio
+diarized_manifest: ${manifest_dir}/02_diarized.json
+vad_manifest: ${manifest_dir}/03_vad_segments.json
+langdetect_manifest: ${manifest_dir}/04_lang_detected.json
+final_manifest: ${manifest_dir}/final_manifest.json
+
+processors:
+  # ============================================================
+  # STAGE 0: INITIAL MANIFEST
+  # ============================================================
+  
+  - _target_: sdp.processors.CreateInitialManifestByExt
+    raw_data_dir: ${raw_audio_dir}
+    extension: ${audio_extension}
+    output_file_key: audio_filepath
+    output_manifest_file: ${manifest_dir}/00_initial_manifest.json
+
+  - _target_: sdp.processors.GetAudioDuration
+    audio_filepath_key: audio_filepath
+    duration_key: duration
+    output_manifest_file: ${manifest_dir}/01_with_duration.json
+
+  # ============================================================
+  # STAGE 1: SOURCE SEPARATION
+  # Remove background music and noise
+  # ============================================================
+  
+  - _target_: sdp.processors.SourceSeparation
+    input_manifest_file: ${manifest_dir}/01_with_duration.json
+    output_manifest_file: ${manifest_dir}/01a_separated.json
+    model_path: ${separation_model_path}
+    audio_filepath_key: audio_filepath
+    output_dir: ${separated_audio_dir}
+    device: cuda
+    denoise: true
+    use_dask: False
+    max_workers: 1
+
+  # ============================================================
+  # STAGE 2: SPEAKER DIARIZATION
+  # Identify different speakers
+  # ============================================================
+  
+  - _target_: sdp.processors.SpeakerDiarization
+    input_manifest_file: ${manifest_dir}/01a_separated.json
+    output_manifest_file: ${diarized_manifest}
+    hf_token: ${hf_token}
+    audio_filepath_key: audio_filepath
+    output_segments_key: speaker_segments
+    segmentation_batch_size: 128
+    embedding_batch_size: 128
+    device: cuda
+
+  # ============================================================
+  # STAGE 3: SILERO VAD SEGMENTATION
+  # Fine-grained segmentation (3-30s per segment)
+  # ============================================================
+  
+  - _target_: sdp.processors.SileroVADSegmentation
+    input_manifest_file: ${diarized_manifest}
+    output_manifest_file: ${vad_manifest}
+    audio_filepath_key: audio_filepath
+    speaker_segments_key: speaker_segments
+    output_segments_key: vad_segments
+    min_segment_duration: ${min_segment_duration}
+    max_segment_duration: ${max_segment_duration}
+    merge_gap: 2.0
+    device: cpu
+
+  # ============================================================
+  # STAGE 4: WHISPER LANGUAGE DETECTION
+  # Detect language for each segment (no ASR)
+  # ============================================================
+  
+  - _target_: sdp.processors.WhisperSegmentLanguageDetection
+    input_manifest_file: ${vad_manifest}
+    output_manifest_file: ${langdetect_manifest}
+    audio_filepath_key: audio_filepath
+    segments_key: vad_segments
+    output_lang_key: detected_lang
+    output_confidence_key: lang_confidence
+    model_size: "large-v3"
+    device: cpu
+    compute_type: int8
+    min_confidence: ${whisper_min_confidence}
+    supported_languages: ${target_languages}
+
+  # ============================================================
+  # STAGE 5: LANGUAGE-BASED ASR ROUTING
+  # Route segments to appropriate NeMo ASR models by language
+  # ============================================================
+  
+  - _target_: sdp.processors.LanguageBasedASRRouter
+    input_manifest_file: ${langdetect_manifest}
+    output_manifest_file: ${manifest_dir}/05_transcribed.json
+    audio_filepath_key: audio_filepath
+    segments_key: vad_segments
+    lang_key: detected_lang
+    output_text_key: text
+    language_models:
+      hi: ${model_hi}
+      te: ${model_te}
+      ta: ${model_ta}
+      bn: ${model_bn}
+      ml: ${model_ml}
+      kn: ${model_kn}
+      mr: ${model_mr}
+      gu: ${model_gu}
+      pa: ${model_pa}
+      or: ${model_or}
+      as: ${model_as}
+      en: ${model_en}
+    batch_size: ${asr_batch_size}
+    device: cuda
+
+  # ============================================================
+  # STAGE 6: POST-PROCESSING
+  # ============================================================
+
+  # Split segments into individual manifest entries
+  - _target_: sdp.processors.LanguageBasedSegmentSplitter
+    input_manifest_file: ${manifest_dir}/05_transcribed.json
+    output_manifest_file: ${manifest_dir}/06_split_segments.json
+    audio_filepath_key: audio_filepath
+    segments_key: vad_segments
+    lang_key: detected_lang
+    output_audio_dir: ${workspace_dir}/final_segments
+    output_lang_key: language
+
+  # Clean text
+  - _target_: sdp.processors.SubRegex
+    output_manifest_file: ${manifest_dir}/07_cleaned_text.json
+    regex_params_list:
+      - {"pattern": "\\s+", "repl": " "}
+      - {"pattern": "^\\s+|\\s+$", "repl": ""}
+
+  # Filter empty transcriptions
+  - _target_: sdp.processors.DropIfRegexMatch
+    output_manifest_file: ${manifest_dir}/08_filtered_empty.json
+    regex_patterns: 
+      - "^\\s*$"
+      - "^.{1,2}$"
+
+  # Count words
+  - _target_: sdp.processors.CountNumWords
+    output_manifest_file: ${manifest_dir}/09_with_word_count.json
+    text_key: text
+    output_key: num_words
+
+  # Filter by word rate
+  - _target_: sdp.processors.DropHighLowWordrate
+    output_manifest_file: ${manifest_dir}/10_filtered_wordrate.json
+    high_wordrate_threshold: 6.0
+    low_wordrate_threshold: 0.3
+
+  # Keep essential fields
+  - _target_: sdp.processors.KeepOnlySpecifiedFields
+    output_manifest_file: ${final_manifest}
+    fields_to_keep:
+      - "audio_filepath"
+      - "text"
+      - "duration"
+      - "language"
+      - "lang_confidence"
+      - "num_words"
+      - "source_file"
+      - "speaker"
+      - "start"
+      - "end"
+

@@ -169,6 +169,16 @@ from sdp.processors.inference.nlp.punctuation_restoration import (
     DuplicateWithPunctuationFlag,
 )
 
+# New processors for Amphion-style pipeline
+from sdp.processors.inference.audio_processing.source_separation import SourceSeparation
+from sdp.processors.inference.vad.silero_vad import SileroVADSegmentation
+from sdp.processors.inference.diarization.speaker_diarization import SpeakerDiarization
+from sdp.processors.inference.nlp.whisper_langid import WhisperSegmentLanguageDetection
+from sdp.processors.inference.asr.language_router import (
+    LanguageBasedASRRouter,
+    LanguageBasedSegmentSplitter,
+)
+
 from sdp.processors.manage_files.convert_audio import (
     FfmpegConvert,
     SoxConvert,
