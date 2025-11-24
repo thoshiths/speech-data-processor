@@ -71,7 +71,7 @@ whisper_min_confidence: 0.8
 
 # Derived paths
 manifest_dir: ${workspace_dir}/manifests
-raw_audio_dir: /datasets/opensource-data-collection/youtube-raw-audio/Aa/
+raw_audio_dir: /mnt/pfs/youtube-raw-audio/ay/ayWv
 separated_audio_dir: ${workspace_dir}/separated_audio
 diarized_manifest: ${manifest_dir}/02_diarized.json
 vad_manifest: ${manifest_dir}/03_vad_segments.json
