@@ -1,18 +1,30 @@
 # Additional requirements for Amphion-style pipeline
 # Install with: pip install -r requirements_amphion_pipeline.txt
 
+# IMPORTANT: Version Compatibility Notes
+# =======================================
+# If you have torchaudio 2.9.0+, you MUST upgrade pyannote.audio:
+#   pip install --upgrade "pyannote.audio>=3.3.0"
+#
+# If you get "AttributeError: module 'torchaudio' has no attribute 'AudioMetaData'":
+#   Option 1: pip install --upgrade pyannote.audio  # Recommended
+#   Option 2: pip install torchaudio==2.2.0 torch==2.2.0  # Downgrade
+
 # Source Separation
 onnxruntime-gpu>=1.16.0  # For CUDA
 # onnxruntime>=1.16.0  # For CPU only
 
-# Silero VAD
+# PyTorch and Audio
+# For torchaudio 2.9.0+, need pyannote.audio 3.3.0+
+# For torchaudio 2.1-2.4, use pyannote.audio 3.1.0+
 torch>=2.0.0
-torchaudio>=2.0.0
+torchaudio>=2.1.0
 
 # Whisper Language Detection
 faster-whisper>=0.10.0
 
 # Speaker Diarization
+# NOTE: Imports are lazy-loaded to avoid version conflicts at startup
 pyannote.audio>=3.1.0
 
 # Audio processing

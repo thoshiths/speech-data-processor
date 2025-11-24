@@ -20,9 +20,6 @@ Based on Amphion's Emilia preprocessing pipeline.
 """
 
 import torch
-import torchaudio
-from pyannote.audio import Pipeline
-import pandas as pd
 
 from sdp.logging import logger
 from sdp.processors.base_processor import BaseProcessor
@@ -80,6 +77,17 @@ class SpeakerDiarization(BaseProcessor):
 
     def prepare(self):
         """Initialize the speaker diarization pipeline."""
+        # Lazy import to avoid torchaudio compatibility issues at module load time
+        try:
+            import torchaudio
+            from pyannote.audio import Pipeline
+        except ImportError as e:
+            raise ImportError(
+                f"Failed to import pyannote.audio dependencies: {e}\n"
+                "Please install: pip install pyannote.audio>=3.1.0\n"
+                "Note: Requires compatible torchaudio version"
+            )
+        
         if not self.hf_token.startswith("hf"):
             raise ValueError(
                 "hf_token must start with 'hf'. Get your token at: "
@@ -109,7 +117,8 @@ class SpeakerDiarization(BaseProcessor):
             audio_filepath = entry[self.audio_filepath_key]
 
             try:
-                # Load audio
+                # Load audio (torchaudio imported in prepare())
+                import torchaudio
                 waveform, sample_rate = torchaudio.load(audio_filepath)
                 waveform = waveform.to(self.device)
 
