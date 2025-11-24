@@ -41,8 +41,8 @@ documentation: |
 processors_to_run: "0:"
 
 # Required parameters
-workspace_dir: ???
-separation_model_path: ???  # Path to UVR-MDX-NET-Inst_HQ_3.onnx
+workspace_dir: /shared/workspace_amphion
+separation_model_path: "/shared/models/UVR-MDX-NET-Inst_HQ_3.onnx"  # Path to UVR-MDX-NET-Inst_HQ_3.onnx
 hf_token: ???  # HuggingFace token for PyAnnote
 
 # Languages to process
